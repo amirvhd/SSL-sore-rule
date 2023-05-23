@@ -1,6 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-# This file adapted based on DINO project:
-#   https://github.com/facebookresearch/dino
+# 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -70,7 +69,8 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., num_masks=2,
+                 d=0):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -80,14 +80,49 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
+        self.num_masks = num_masks
+        self.current_epoch = 0
+        self.depth = d
+        heads_list = list(range(0, self.num_heads))
+        self.combinations = list(itertools.combinations(heads_list, r=self.num_masks))
+        # create list of zeros of len combination that for counting how often a combination was sampled (attribute of vit)
+        self.sample_counts = [0] * len(self.combinations)
+        self.choice = list(range(len(self.sample_counts)))
+        # self.h_p = [0.2, 0.25, 0.25, 0.3, 0.35, 0.35, 0.4, 0.4, 0.45, 0.45, 0.5, 0.5]
+        # self.T = [12, 15, 15, 15, 17, 17, 20, 20, 23, 23, 27, 27]
+        # self.h_p = [0.5, 0.5, 0.45, 0.45, 0.4, 0.4, 0.35, 0.35, 0.3, 0.3, 0.25, 0.25]
+        # self.T = [27, 27, 25, 25, 23, 23, 20, 20, 17, 17, 15, 15]
+        # self.h_p = [0.5] * 12
+        # self.T = [25] * 12
+        self.h_p = 0.5
+        self.T = 100
 
-
-
-
-    def forward(self, x, epoch):
+    def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
+        # p = random.random()
+        # if (self.t  and p < self.h_p):
+        #     if epoch > self.current_epoch:
+        #         # re-initialize each epoch
+        #         # self.combinations = list(itertools.combinations(self.heads_list, r=self.num_masks))
+        #         self.choice = list(range(len(self.sample_counts)))
+        #         self.sample_counts = [0] * len(self.combinations)
+        #         self.current_epoch = epoch
+        #         # if 50 <= epoch:
+        #         #     self.h_p = self.h_p + 0.01
+        #         # else:
+        #         self.h_p = self.h_p - 0.005
+        #     mask_v = torch.ones_like(v)
+        #     # sample 1 combination
+        #     mask_indices = random.sample(self.choice, 1)
+        #     self.sample_counts[mask_indices[0]] += 1
+        #     if self.sample_counts[mask_indices[0]] >= self.T:
+        #         self.choice.remove(mask_indices[0])
+        #     # set mask to zero at indices that were sampled
+        #     for i in self.combinations[mask_indices[0]]:
+        #         mask_v[:, i, :, :] = 0
+        #     v = v * mask_v
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
@@ -101,8 +136,7 @@ class Attention(nn.Module):
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, num_masks=2,
-                 d=0):
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
@@ -112,8 +146,8 @@ class Block(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def forward(self, x, epoch=0, return_attention=False):
-        y, attn = self.attn(self.norm1(x), epoch)
+    def forward(self, x, return_attention=False):
+        y, attn = self.attn(self.norm1(x))
         if return_attention:
             return attn
         x = x + self.drop_path(y)
@@ -144,8 +178,8 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer """
 
     def __init__(self, img_size=[224], patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0.1, attn_drop_rate=0.1,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, num_masks=2, **kwargs):
+                 num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, **kwargs):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
 
@@ -161,8 +195,7 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
-                num_masks=num_masks, d=i)
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
             for i in range(depth)])
         self.norm = norm_layer(embed_dim)
 
@@ -217,10 +250,10 @@ class VisionTransformer(nn.Module):
 
         return self.pos_drop(x)
 
-    def forward(self, x, epoch=0):
+    def forward(self, x):
         x = self.prepare_tokens(x)
         for blk in self.blocks:
-            x = blk(x, epoch)
+            x = blk(x)
         x = self.norm(x)
         return x[:, 0]
 
@@ -233,12 +266,12 @@ class VisionTransformer(nn.Module):
                 # return attention of the last block
                 return blk(x, return_attention=True)
 
-    def get_intermediate_layers(self, x, n=1, epoch=0):
+    def get_intermediate_layers(self, x, n=1):
         x = self.prepare_tokens(x)
         # we return the output tokens from the `n` last blocks
         output = []
         for i, blk in enumerate(self.blocks):
-            x = blk(x, epoch)
+            x = blk(x)
             if len(self.blocks) - i <= n:
                 output.append(self.norm(x))
         return output
@@ -260,7 +293,7 @@ def vit_small(patch_size=16, **kwargs):
 
 def vit_base(patch_size=16, **kwargs):
     model = VisionTransformer(
-        patch_size=patch_size, embed_dim=768, depth=12, num_heads=16, mlp_ratio=4,
+        patch_size=patch_size, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4,
         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 
@@ -301,6 +334,14 @@ class DINOHead(nn.Module):
         x = self.mlp(x)
         x = nn.functional.normalize(x, dim=-1, p=2)
         proj = self.last_layer(x)
+        # if self.teacher:
+        #     proj = nn.functional.normalize(proj, dim=-1, p=2)
+        # proj1 = nn.functional.relu(proj)
+        # proj1 = nn.functional.normalize(proj, dim=-1, p=2)
+        # proj1 = self.BN(proj)
+        # proj1 = nn.functional.relu(proj1)
+        # mu = nn.functional.normalize(self.mean_layer(proj1), dim=-1, p=2)
+        # var = torch.exp(nn.functional.normalize(self.var_layer(proj1)*0.5, dim=-1, p=2))
 
         return proj
 

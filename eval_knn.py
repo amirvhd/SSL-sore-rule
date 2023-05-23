@@ -25,17 +25,59 @@ from torchvision import models as torchvision_models
 
 import utils
 import vision_transformer as vits
+import numpy as np
+from torchvision.transforms import InterpolationMode
+from torchvision.datasets.folder import ImageFolder, default_loader
+from vision_transformer import DINOHead
+"""
+Copy-paste from DINO library:
+https://github.com/facebookresearch/dino
+"""
+
+def get_keep_index(labels, percent, num_classes, shuffle=False):
+    labels = np.array(labels)
+    keep_indexs = []
+    for i in range(num_classes):
+        idx = np.where(labels == i)[0]
+        num_sample = len(idx)
+        label_per_class = min(max(1, round(percent * num_sample)), num_sample)
+        if shuffle:
+            np.random.shuffle(idx)
+        keep_indexs.extend(idx[:label_per_class])
+
+    return keep_indexs
+
+
+class ImageFolderWithPercent(ImageFolder):
+
+    def __init__(self, root, transform=None, target_transform=None,
+                 loader=default_loader, is_valid_file=None, percent=1.0, shuffle=False):
+        super().__init__(root, transform=transform, target_transform=target_transform,
+                         loader=loader, is_valid_file=is_valid_file)
+        assert 0 <= percent <= 1
+        if percent < 1:
+            keep_indexs = get_keep_index(self.targets, percent, len(self.classes), shuffle)
+            self.samples = [self.samples[i] for i in keep_indexs]
+            self.targets = [self.targets[i] for i in keep_indexs]
+            self.imgs = self.samples
+
+
+class ReturnIndexDataset(ImageFolderWithPercent):
+    def __getitem__(self, idx):
+        img, lab = super(ReturnIndexDataset, self).__getitem__(idx)
+        return img, idx
 
 
 def extract_feature_pipeline(args):
     # ============ preparing data ... ============
     transform = pth_transforms.Compose([
-        pth_transforms.Resize(256, interpolation=3),
+        pth_transforms.Resize(256, interpolation=InterpolationMode.BICUBIC),
         pth_transforms.CenterCrop(224),
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
-    dataset_train = ReturnIndexDataset(os.path.join(args.data_path, "train"), transform=transform)
+    dataset_train = ReturnIndexDataset(os.path.join(args.data_path, "train"), transform=transform,
+                                       percent=1)
     dataset_val = ReturnIndexDataset(os.path.join(args.data_path, "val"), transform=transform)
     sampler = torch.utils.data.DistributedSampler(dataset_train, shuffle=False)
     data_loader_train = torch.utils.data.DataLoader(
@@ -68,7 +110,22 @@ def extract_feature_pipeline(args):
         print(f"Architecture {args.arch} non supported")
         sys.exit(1)
     model.cuda()
-    utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+    student_dino = utils.MultiCropWrapper(model, DINOHead(
+        model.embed_dim,
+        12000,
+        use_bn=False,
+        norm_last_layer=False,
+    ))
+    student = utils.wrapper(student_dino, 12000, 12000)
+    checkpoint = torch.load(
+        args.pretrained_weights,
+        map_location="cpu")
+    checkpoint = checkpoint['student']
+    checkpoint = {k.replace("module.", ""): v for k, v in checkpoint.items()}
+    student.load_state_dict(checkpoint)
+    # utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
+    model = student
+    model.cuda()
     model.eval()
 
     # ============ extract features ... ============
@@ -102,7 +159,9 @@ def extract_features(model, data_loader, use_cuda=True, multiscale=False):
         if multiscale:
             feats = utils.multi_scale(samples, model)
         else:
-            feats = model(samples).clone()
+            mean, _ = model(samples)
+            feats = mean.clone()
+            # feats = model(samples).clone()
 
         # init storage feature matrix
         if dist.get_rank() == 0 and features is None:
@@ -182,21 +241,15 @@ def knn_classifier(train_features, train_labels, test_features, test_labels, k, 
     return top1, top5
 
 
-class ReturnIndexDataset(datasets.ImageFolder):
-    def __getitem__(self, idx):
-        img, lab = super(ReturnIndexDataset, self).__getitem__(idx)
-        return img, idx
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Evaluation with weighted k-NN on ImageNet')
-    parser.add_argument('--batch_size_per_gpu', default=128, type=int, help='Per-GPU batch-size')
+    parser.add_argument('--batch_size_per_gpu', default=16, type=int, help='Per-GPU batch-size')
     parser.add_argument('--nb_knn', default=[10, 20, 100, 200], nargs='+', type=int,
                         help='Number of NN to use. 20 is usually working the best.')
     parser.add_argument('--temperature', default=0.07, type=float,
                         help='Temperature used in the voting coefficient')
     parser.add_argument('--pretrained_weights',
-                        default='/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/score/checkpoint.pth',
+                        default='/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/score8/checkpoint.pth',
                         type=str, help="Path to pretrained weights to evaluate.")
     parser.add_argument('--use_cuda', default=True, type=utils.bool_flag,
                         help="Should we store the features on GPU? We recommend setting this to False if you encounter OOM")
@@ -204,7 +257,8 @@ if __name__ == '__main__':
     parser.add_argument('--patch_size', default=16, type=int, help='Patch resolution of the model.')
     parser.add_argument("--checkpoint_key", default="teacher", type=str,
                         help='Key to use in the checkpoint (example: "teacher")')
-    parser.add_argument('--dump_features', default=None,
+    parser.add_argument('--dump_features',
+                        default="/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/linear_models/test",
                         help='Path where to save computed features, empty for no saving')
     parser.add_argument('--load_features', default=None, help="""If the features have
         already been computed, where to find them.""")

@@ -1,6 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-# This file adapted based on DINO project:
-#   https://github.com/facebookresearch/dino
+# 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -12,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+Some parts of this code is Copy-paste from DINO library:
+https://github.com/facebookresearch/dino
+"""
 import os
 import argparse
 import json
@@ -19,7 +22,6 @@ from pathlib import Path
 import copy
 import torch
 from torch import nn
-import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 from torchvision import datasets
 from torchvision import transforms as pth_transforms
@@ -28,7 +30,8 @@ import utils
 import vision_transformer as vits
 import numpy as np
 from torchvision.transforms import InterpolationMode
-
+from torchvision.datasets.folder import ImageFolder, default_loader
+from vision_transformer import DINOHead
 
 def predict_dist(model, num_samples, inp, n, epoch):
     output = []
@@ -50,6 +53,34 @@ def predict_point(model, num_samples, inp, n, epoch):
 def apply_dropout(m):
     if type(m) == nn.Dropout or type(m) == nn.Dropout2d:
         m.train()
+
+
+def get_keep_index(labels, percent, num_classes, shuffle=False):
+    labels = np.array(labels)
+    keep_indexs = []
+    for i in range(num_classes):
+        idx = np.where(labels == i)[0]
+        num_sample = len(idx)
+        label_per_class = min(max(1, round(percent * num_sample)), num_sample)
+        if shuffle:
+            np.random.shuffle(idx)
+        keep_indexs.extend(idx[:label_per_class])
+
+    return keep_indexs
+
+
+class ImageFolderWithPercent(ImageFolder):
+
+    def __init__(self, root, transform=None, target_transform=None,
+                 loader=default_loader, is_valid_file=None, percent=1.0, shuffle=False):
+        super().__init__(root, transform=transform, target_transform=target_transform,
+                         loader=loader, is_valid_file=is_valid_file)
+        assert 0 <= percent <= 1
+        if percent < 1:
+            keep_indexs = get_keep_index(self.targets, percent, len(self.classes), shuffle)
+            self.samples = [self.samples[i] for i in keep_indexs]
+            self.targets = [self.targets[i] for i in keep_indexs]
+            self.imgs = self.samples
 
 
 def eval_linear(args):
@@ -82,7 +113,10 @@ def eval_linear(args):
     utils.load_pretrained_weights(model, args.pretrained_weights, args.checkpoint_key, args.arch, args.patch_size)
     print(f"Model {args.arch} built.")
 
+
+
     linear_classifier = LinearClassifier(embed_dim, num_labels=args.num_labels)
+
     linear_classifier = linear_classifier.cuda()
     linear_classifier = nn.parallel.DistributedDataParallel(linear_classifier, device_ids=[args.gpu])
 
@@ -114,6 +148,8 @@ def eval_linear(args):
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, "train"), transform=train_transform)
+    # dataset_train = ImageFolderWithPercent(os.path.join(args.data_path, "train"), transform=train_transform,
+    #                                        percent=0.1,shuffle=True)
     sampler = torch.utils.data.distributed.DistributedSampler(dataset_train)
     train_loader = torch.utils.data.DataLoader(
         dataset_train,
@@ -123,13 +159,17 @@ def eval_linear(args):
         pin_memory=True,
     )
     print(f"Data loaded with {len(dataset_train)} train and {len(dataset_val)} val imgs.")
+
     # set optimizer
     optimizer = torch.optim.SGD(
         linear_classifier.parameters(),
-        args.lr * (args.batch_size_per_gpu * utils.get_world_size()) / 1024.,  # linear scaling rule
+        # [{'params': model.parameters()},
+        #  {'params': linear_classifier.parameters(),"lr":0.025}],
+        args.lr * (args.batch_size_per_gpu * utils.get_world_size()) / 256.,  # linear scaling rule
         momentum=0.9,
-        weight_decay=0,  # we do not apply weight decay
+        weight_decay=1e-6,  # we do not apply weight decay
     )
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs, eta_min=0)
 
     # Optionally resume from a checkpoint
@@ -146,7 +186,6 @@ def eval_linear(args):
     best = 0
     best_epoch = 0
     for epoch in range(start_epoch, args.epochs):
-        # train_loader.sampler.set_epoch(epoch)
 
         train_stats = train(model, linear_classifier, optimizer, train_loader, epoch, args.n_last_blocks,
                             args.avgpool_patchtokens)
@@ -168,8 +207,7 @@ def eval_linear(args):
                 best = best_acc
                 best_classifier = copy.deepcopy(linear_classifier)
                 print('best accuracy: {:.2f}'.format(best_acc))
-            if epoch - best_epoch > 6:
-                break
+
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
@@ -186,6 +224,8 @@ def eval_linear(args):
 
 
 def train(model, linear_classifier, optimizer, loader, epoch, n, avgpool):
+    # model.train()
+    # model.apply(apply_dropout)
     linear_classifier.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -299,13 +339,13 @@ if __name__ == '__main__':
     parser.add_argument('--arch', default='vit_small', type=str, help='Architecture')
     parser.add_argument('--patch_size', default=16, type=int, help='Patch resolution of the model.')
     parser.add_argument('--pretrained_weights',
-                        default='/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/score2/checkpoint.pth',
+                        default='/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/score8/checkpoint.pth',
                         type=str,
                         help="Path to pretrained weights to evaluate.")
     parser.add_argument("--checkpoint_key", default="teacher", type=str,
                         help='Key to use in the checkpoint (example: "teacher")')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
-    parser.add_argument("--lr", default=0.005, type=float, help="""Learning rate at the beginning of
+    parser.add_argument("--lr", default=5e-3, type=float, help="""Learning rate at the beginning of
         training (highest LR used during training). The learning rate is linearly scaled
         with the batch size, and specified here for a reference batch size of 256.
         We recommend tweaking the LR depending on the checkpoint evaluated.""")
@@ -318,7 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument('--val_freq', default=1, type=int, help="Epoch frequency for validation.")
     parser.add_argument('--output_dir',
-                        default="/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/linear_models/score",
+                        default="/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/linear_models/score4",
                         help='Path to save logs and checkpoints')
     parser.add_argument('--num_labels', default=1000, type=int, help='Number of labels for linear classifier')
     parser.add_argument('--evaluate', dest='evaluate', action='store_true', help='evaluate model on validation set')

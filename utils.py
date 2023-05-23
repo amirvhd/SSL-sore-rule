@@ -1,6 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-# This file adapted based on DINO project:
-#   https://github.com/facebookresearch/dino
+# 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -81,6 +80,7 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_nam
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         # remove `backbone.` prefix induced by multicrop wrapper
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("model.", ""): v for k, v in state_dict.items()}
         msg = model.load_state_dict(state_dict, strict=False)
         print('Pretrained weights found at {} and loaded with msg: {}'.format(pretrained_weights, msg))
     else:
@@ -613,7 +613,7 @@ class MultiCropWrapper(nn.Module):
         self.backbone = backbone
         self.head = head
 
-    def forward(self, x, epcoh):
+    def forward(self, x):
         # convert to list
         if not isinstance(x, list):
             x = [x]
@@ -623,7 +623,7 @@ class MultiCropWrapper(nn.Module):
         )[1], 0)
         start_idx, output = 0, torch.empty(0).to(x[0].device)
         for end_idx in idx_crops:
-            _out = self.backbone(torch.cat(x[start_idx: end_idx]), epcoh)
+            _out = self.backbone(torch.cat(x[start_idx: end_idx]))
             # The output is a tuple with XCiT model. See:
             # https://github.com/facebookresearch/xcit/blob/master/xcit.py#L404-L405
             if isinstance(_out, tuple):
@@ -659,8 +659,8 @@ class wrapper(nn.Module):
         # self.bn2 = nn.BatchNorm1d(m_dim)
         # self.bn1 = nn.BatchNorm1d(out_dim)
 
-    def forward(self, x, epcoh):
-        proj = self.model(x, epcoh)
+    def forward(self, x):
+        proj = self.model(x)
         # proj = nn.functional.softmax(proj/0.1, dim=-1)
         # proj = self.bn1(proj)
         pred1 = self.pred_layer1(proj)

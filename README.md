@@ -37,7 +37,7 @@ pip install -r requirements.txt
 You can run the pretraining of model for Imagenet with following code.
 
 ```python
-torchrun --nproc_per_node=8 main_dino.py --arch vit_small 
+torchrun --nproc_per_node=8 main_prosmin.py --arch vit_small 
 ``` 
 ### Linear evaluation
 
