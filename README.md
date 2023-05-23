@@ -7,14 +7,10 @@ Scoring Rules Minimization" paper.
 
 
 ## Table of contents
-* [Badges](#general-information)
 * [Installation](#Installation)
 * [Usage/Examples](#Usage/Examples)
 * [Acknowledgements](#Acknowledgements)
-
-## Badges
-
-[![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/git/git-scm.com/blob/main/MIT-LICENSE.txt)
+* [License](#License)
 
 ### Dependency
 
@@ -47,22 +43,11 @@ You can run the linear-evaluation of the model for Imagenet with the following c
 torchrun --nproc_per_node=8 eval_linear.py --arch vit_small
 ``` 
 
-### Uncertainty evaluation 
+## Acknowledgement
+This repository is built using the [DINO](https://github.com/facebookresearch/dino) repository.
 
-```python
-python 
-```
- 
-### Out of distribtuion detection
-
-
-```python
-python 
-```
+## License
+This repository is released under the Apache 2.0 license as found in the LICENSE file.
 
 
 
-## Acknowledgements
-Base DINO adapted from following repository:
-
- - [DINO](https://github.com/facebookresearch/dino)
