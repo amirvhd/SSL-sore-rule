@@ -19,7 +19,7 @@ Scoring Rules Minimization" paper.
 ### Dependency
 
 ![Python](https://img.shields.io/badge/Python-3.9-brightgreen)
-![torch](https://img.shields.io/badge/Torch-1.10.1-brightgreen)
+![torch](https://img.shields.io/badge/Torch-1.12.1-brightgreen)
 
 ## Installation
 
