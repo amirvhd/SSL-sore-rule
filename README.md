@@ -3,8 +3,7 @@
 
 This repository is for "Probabilistic Self-supervised Learning via
 Scoring Rules Minimization" paper. 
-![Framework](https://github.com/amirvhd/SSL-sore-rule/assets/65691404/6695d70e-37b0-4f54-b283-0aced89246af)
-
+<img src="https://github.com/amirvhd/SSL-sore-rule/assets/65691404/6695d70e-37b0-4f54-b283-0aced89246af" width="100">
 
 ## Table of contents
 * [Installation](#Installation)
