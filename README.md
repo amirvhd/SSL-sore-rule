@@ -7,7 +7,7 @@ Scoring Rules Minimization" paper.
 
 
 
-<img src="https://github.com/amirvhd/SSL-sore-rule/assets/65691404/3b4d8757-441c-4c37-84e5-9b71248acfb8" width="400">
+<img src="https://github.com/amirvhd/SSL-sore-rule/assets/65691404/3b4d8757-441c-4c37-84e5-9b71248acfb8" width="400" alt="framework">
 
 ## Table of contents
 * [Installation](#Installation)
