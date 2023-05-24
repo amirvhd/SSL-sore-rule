@@ -6,7 +6,7 @@ Scoring Rules Minimization" paper.
 
 
 
-<img src="Framework.png" width="400" alt="framework">
+<img src="Framework.png" width="600" alt="framework">
 
 
 
