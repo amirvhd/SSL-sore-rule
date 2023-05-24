@@ -33,7 +33,7 @@ torchvision_archs = sorted(name for name in torchvision_models.__dict__
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('ProMin', add_help=False)
+    parser = argparse.ArgumentParser('ProSMin', add_help=False)
 
     # Model parameters
     parser.add_argument('--arch', default='vit_small', type=str,
