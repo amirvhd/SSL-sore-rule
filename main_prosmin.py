@@ -85,7 +85,7 @@ def get_args_parser():
     parser.add_argument('--drop_path_rate', type=float, default=0.1, help="stochastic depth rate")
     parser.add_argument('--lamda', type=float, default=2.4,
                         help='hyper parameter for second part of the ProSMin loss')
-    parser.add_argument('--center_momentum', type=float, default=2.4,
+    parser.add_argument('--center_momentum', type=float, default=0.9,
                         help='momentum for centering of target results')
     # Multi-crop parameters
     parser.add_argument('--global_crops_scale', type=float, nargs='+', default=(0.4, 1.),
