@@ -12,6 +12,7 @@ Scoring Rules Minimization" paper.
 
 ## Table of contents
 * [Installation](#Installation)
+* [Dataset](#Dataset)
 * [Usage/Examples](#Usage/Examples)
 * [Acknowledgements](#Acknowledgements)
 * [License](#License)
@@ -27,7 +28,9 @@ Install requirments:
 ```python
 pip install -r requirements.txt
 ```
+## Dataset
 
+Please download [Imagenet](https://image-net.org/). 
 
 ## Usage/Examples
 
@@ -37,14 +40,14 @@ pip install -r requirements.txt
 You can run the pretraining of model for Imagenet with following code.
 
 ```python
-torchrun --nproc_per_node=8 main_prosmin.py --arch vit_small 
+torchrun --nproc_per_node=8 main_prosmin.py --arch vit_small --data_path /path/to/imagenet/train --output_dir /path/to/saving_dir
 ``` 
 ### Linear evaluation
 
 You can run the linear-evaluation of the model for Imagenet with the following code. 
 
 ```python
-torchrun --nproc_per_node=8 eval_linear.py --arch vit_small
+torchrun --nproc_per_node=8 eval_linear.py --arch vit_small --data_path /path/to/imagenet --pretrained_weights /path/to/saving_dir
 ``` 
 
 ## Acknowledgement

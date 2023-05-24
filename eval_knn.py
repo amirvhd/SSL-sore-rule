@@ -11,50 +11,22 @@ import torch
 from torch import nn
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
-from torchvision import datasets
 from torchvision import transforms as pth_transforms
 from torchvision import models as torchvision_models
 
 import utils
 import vision_transformer as vits
-import numpy as np
 from torchvision.transforms import InterpolationMode
-from torchvision.datasets.folder import ImageFolder, default_loader
+from torchvision.datasets.folder import ImageFolder
 from vision_transformer import DINOHead
 """
 Copy-paste from DINO library:
 https://github.com/facebookresearch/dino
 """
 
-def get_keep_index(labels, percent, num_classes, shuffle=False):
-    labels = np.array(labels)
-    keep_indexs = []
-    for i in range(num_classes):
-        idx = np.where(labels == i)[0]
-        num_sample = len(idx)
-        label_per_class = min(max(1, round(percent * num_sample)), num_sample)
-        if shuffle:
-            np.random.shuffle(idx)
-        keep_indexs.extend(idx[:label_per_class])
-
-    return keep_indexs
 
 
-class ImageFolderWithPercent(ImageFolder):
-
-    def __init__(self, root, transform=None, target_transform=None,
-                 loader=default_loader, is_valid_file=None, percent=1.0, shuffle=False):
-        super().__init__(root, transform=transform, target_transform=target_transform,
-                         loader=loader, is_valid_file=is_valid_file)
-        assert 0 <= percent <= 1
-        if percent < 1:
-            keep_indexs = get_keep_index(self.targets, percent, len(self.classes), shuffle)
-            self.samples = [self.samples[i] for i in keep_indexs]
-            self.targets = [self.targets[i] for i in keep_indexs]
-            self.imgs = self.samples
-
-
-class ReturnIndexDataset(ImageFolderWithPercent):
+class ReturnIndexDataset(ImageFolder):
     def __getitem__(self, idx):
         img, lab = super(ReturnIndexDataset, self).__getitem__(idx)
         return img, idx
@@ -68,8 +40,7 @@ def extract_feature_pipeline(args):
         pth_transforms.ToTensor(),
         pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
     ])
-    dataset_train = ReturnIndexDataset(os.path.join(args.data_path, "train"), transform=transform,
-                                       percent=1)
+    dataset_train = ReturnIndexDataset(os.path.join(args.data_path, "train"), transform=transform)
     dataset_val = ReturnIndexDataset(os.path.join(args.data_path, "val"), transform=transform)
     sampler = torch.utils.data.DistributedSampler(dataset_train, shuffle=False)
     data_loader_train = torch.utils.data.DataLoader(
@@ -241,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', default=0.07, type=float,
                         help='Temperature used in the voting coefficient')
     parser.add_argument('--pretrained_weights',
-                        default='/dss/dssmcmlfs01/pn69za/pn69za-dss-0002/ra49bid2/dino_saved_models/score8/checkpoint.pth',
+                        default='',
                         type=str, help="Path to pretrained weights to evaluate.")
     parser.add_argument('--use_cuda', default=True, type=utils.bool_flag,
                         help="Should we store the features on GPU? We recommend setting this to False if you encounter OOM")

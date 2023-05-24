@@ -648,17 +648,14 @@ class wrapper(nn.Module):
         self.nonlinear = nn.GELU()
         self.pred_layer2 = nn.Linear(out_dim, m_dim)
         self.non_linear = nn.ReLU()
-        # self.bn2 = nn.BatchNorm1d(m_dim)
-        # self.bn1 = nn.BatchNorm1d(out_dim)
+
 
     def forward(self, x):
         proj = self.model(x)
-        # proj = nn.functional.softmax(proj/0.1, dim=-1)
-        # proj = self.bn1(proj)
+
         pred1 = self.pred_layer1(proj)
 
         pred1 = self.pred_layer2(self.nonlinear(pred1))
-        # pred1 = self.bn2(pred1)1
         pred = nn.functional.normalize(pred1, dim=-1, p=2)
         mu = self.mean_layer(self.non_linear(pred))
         var = torch.exp(self.var_layer(self.non_linear(pred)) * 0.5)

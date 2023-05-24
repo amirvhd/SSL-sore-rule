@@ -62,60 +62,21 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., num_masks=2,
-                 d=0):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
-        self.t = False
+
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
-        self.num_masks = num_masks
-        self.current_epoch = 0
-        self.depth = d
-        heads_list = list(range(0, self.num_heads))
-        self.combinations = list(itertools.combinations(heads_list, r=self.num_masks))
-        # create list of zeros of len combination that for counting how often a combination was sampled (attribute of vit)
-        self.sample_counts = [0] * len(self.combinations)
-        self.choice = list(range(len(self.sample_counts)))
-        # self.h_p = [0.2, 0.25, 0.25, 0.3, 0.35, 0.35, 0.4, 0.4, 0.45, 0.45, 0.5, 0.5]
-        # self.T = [12, 15, 15, 15, 17, 17, 20, 20, 23, 23, 27, 27]
-        # self.h_p = [0.5, 0.5, 0.45, 0.45, 0.4, 0.4, 0.35, 0.35, 0.3, 0.3, 0.25, 0.25]
-        # self.T = [27, 27, 25, 25, 23, 23, 20, 20, 17, 17, 15, 15]
-        # self.h_p = [0.5] * 12
-        # self.T = [25] * 12
-        self.h_p = 0.5
-        self.T = 100
 
     def forward(self, x):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
-        # p = random.random()
-        # if (self.t  and p < self.h_p):
-        #     if epoch > self.current_epoch:
-        #         # re-initialize each epoch
-        #         # self.combinations = list(itertools.combinations(self.heads_list, r=self.num_masks))
-        #         self.choice = list(range(len(self.sample_counts)))
-        #         self.sample_counts = [0] * len(self.combinations)
-        #         self.current_epoch = epoch
-        #         # if 50 <= epoch:
-        #         #     self.h_p = self.h_p + 0.01
-        #         # else:
-        #         self.h_p = self.h_p - 0.005
-        #     mask_v = torch.ones_like(v)
-        #     # sample 1 combination
-        #     mask_indices = random.sample(self.choice, 1)
-        #     self.sample_counts[mask_indices[0]] += 1
-        #     if self.sample_counts[mask_indices[0]] >= self.T:
-        #         self.choice.remove(mask_indices[0])
-        #     # set mask to zero at indices that were sampled
-        #     for i in self.combinations[mask_indices[0]]:
-        #         mask_v[:, i, :, :] = 0
-        #     v = v * mask_v
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
@@ -327,39 +288,7 @@ class DINOHead(nn.Module):
         x = self.mlp(x)
         x = nn.functional.normalize(x, dim=-1, p=2)
         proj = self.last_layer(x)
-        # if self.teacher:
-        #     proj = nn.functional.normalize(proj, dim=-1, p=2)
-        # proj1 = nn.functional.relu(proj)
-        # proj1 = nn.functional.normalize(proj, dim=-1, p=2)
-        # proj1 = self.BN(proj)
-        # proj1 = nn.functional.relu(proj1)
-        # mu = nn.functional.normalize(self.mean_layer(proj1), dim=-1, p=2)
-        # var = torch.exp(nn.functional.normalize(self.var_layer(proj1)*0.5, dim=-1, p=2))
 
         return proj
 
 
-class BergmanHead(nn.Module):
-    def __init__(self,
-                 fc_dim=128,
-                 k_subs=10,
-                 ):
-        super(BergmanHead, self).__init__()
-        # k subnetworks for bregman
-        self.subnets = nn.ModuleList()
-
-        for k_idx in range(k_subs):
-            fc = nn.Sequential()
-            fc.add_module(
-                name="output_{:d}".format(k_idx),
-                module=nn.Linear(fc_dim, 1))
-            self.subnets.append(fc)
-
-    def forward(self, x):
-        out = []
-        for subnet in self.subnets:
-            out.append(subnet(x))
-
-        out = torch.cat(out, -1)
-        # F.normalize(feature, dim=-1)
-        return x, out

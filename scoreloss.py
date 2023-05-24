@@ -18,7 +18,7 @@ def gaussian_kernel(x1, x2, gamma=1):
 
 class SCORELoss(nn.Module):
     def __init__(self, out_dim, ncrops,
-                 center_momentum=0.85, l=2.4):
+                 center_momentum=0.9, l=2.4):
         super().__init__()
         self.center_momentum = center_momentum
         self.ncrops = ncrops
@@ -30,15 +30,13 @@ class SCORELoss(nn.Module):
                                                )
         self.l = l
 
-    def forward(self, mean_st, var_st, teacher_output, epoch):
+    def forward(self, mean_st, var_st, teacher_output):
         self.batch = mean_st.shape[0]
 
         samples = self.dist.rsample(sample_shape=torch.tensor([self.n_sample, self.batch]))
         student_sample = (
                 (samples * var_st.unsqueeze(0)) + mean_st.unsqueeze(0))
 
-        # temp = self.teacher_temp_schedule[epoch]
-        # teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
         teacher_output = (teacher_output - self.center)
         teacher_out = teacher_output.detach().chunk(2)
 
@@ -49,7 +47,6 @@ class SCORELoss(nn.Module):
 
         for i in range(self.n_sample):
             for iq, q in enumerate(teacher_out):
-                # if iq < 3:
                 for iv in range(len(student_sample_chunk)):
                     loss_first_part += 2 * F.l1_loss(student_sample_chunk[iv][i, :, :], q)
                     n_loss += 1
