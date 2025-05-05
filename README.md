@@ -1,8 +1,8 @@
 
 # ProSMin: Probabilistic Self-supervised Learning via Scoring Rules Minimization
 
-This repository is for "Probabilistic Self-supervised Learning via
-Scoring Rules Minimization" paper. 
+This repository is for !["Probabilistic Self-supervised Learning via
+Scoring Rules Minimization"](https://epub.ub.uni-muenchen.de/121741/1/5704_Probabilistic_Self_superv.pdf)  paper. 
 
 
 
